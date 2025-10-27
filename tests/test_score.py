@@ -12,6 +12,43 @@ from app.models.response import ScoreResult
 
 client = TestClient(app)
 
+EXPECTED_SCORE_REQUEST_EXAMPLE = {
+    "prompt_context": {
+        "system": "You are a helpful assistant that evaluates responses for accuracy.",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Summarize the key points from the following article.",
+            },
+            {
+                "role": "assistant",
+                "content": "Sure — please provide the article text so I can summarize it.",
+            },
+        ],
+    },
+    "candidates": [
+        {
+            "id": "candidate-1",
+            "text": (
+                "The article highlights three main trends: increased AI adoption, emphasis on data "
+                "privacy, and the rise of edge computing."
+            ),
+            "model_for_scoring": "openrouter/gpt-4o-mini",
+            "tokenizer": "openrouter/gpt-4o-mini",
+        },
+        {
+            "id": "candidate-2",
+            "text": (
+                "AI adoption is accelerating, privacy rules are tightening, and companies are pushing "
+                "computation closer to users with edge devices."
+            ),
+            "model_for_scoring": "mistralai/mixtral-8x7b-instruct",
+        },
+    ],
+    "return_top_logprobs": 5,
+    "scoring": {"mode": "echo_completions"},
+}
+
 
 @pytest.fixture(autouse=True)
 def configure_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
@@ -94,3 +131,33 @@ def test_legacy_score_route_removed(sample_payload: dict) -> None:
     response = client.post("/score", json=sample_payload)
 
     assert response.status_code == 404
+
+
+def test_openapi_documents_score_request_schema() -> None:
+    """The OpenAPI schema should expose the score request contract and example."""
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+
+    score_path = schema["paths"]["/v1/score"]["post"]
+    request_ref = score_path["requestBody"]["content"]["application/json"]["schema"]
+    assert request_ref == {"$ref": "#/components/schemas/ScoreRequest"}
+
+    score_request_schema = schema["components"]["schemas"]["ScoreRequest"]
+    assert score_request_schema["title"] == "ScoreRequest"
+    assert score_request_schema["required"] == ["prompt_context", "candidates"]
+    assert set(score_request_schema["properties"].keys()) == {
+        "prompt_context",
+        "candidates",
+        "return_top_logprobs",
+        "scoring",
+    }
+
+    logprob_field = score_request_schema["properties"]["return_top_logprobs"]
+    assert logprob_field["minimum"] == 0.0
+    assert logprob_field["maximum"] == 20.0
+    assert logprob_field["default"] == 0
+
+    assert score_request_schema["example"] == EXPECTED_SCORE_REQUEST_EXAMPLE
