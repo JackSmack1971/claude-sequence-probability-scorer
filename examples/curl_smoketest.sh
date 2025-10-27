@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-curl -s -X POST http://localhost:8000/score \  -H 'Content-Type: application/json' \  -d '{
+curl -s -X POST http://localhost:8000/v1/score \
+  -H 'Content-Type: application/json' \
+  -d '{
     "prompt_context": {
       "system": "You are sampling tails.",
       "messages": [{"role":"user","content":"Name a capital of France"}]

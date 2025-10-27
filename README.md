@@ -4,7 +4,7 @@ FastAPI tool server that computes **sequence probabilities** (and log-probabilit
 Designed to be registered as a **Claude tool** to enable **tail sampling** (e.g., keep only responses with `P(r) < 0.10`).
 
 ## Features
-- `POST /score` — batch-score candidate responses w/ `sequence_logprob`, `sequence_probability`, `avg_logprob`, `token_count`.
+- `POST /v1/score` — batch-score candidate responses w/ `sequence_logprob`, `sequence_probability`, `avg_logprob`, `token_count`.
 - Two scoring modes:
   - **echo_completions** (preferred): uses OpenRouter **Completions** with `echo: true` to get logprobs for prompt tokens and sum over the assistant segment.
   - **chat_regenerate** (fallback): uses OpenRouter **Chat Completions** with `logprobs: true` and asks the model to repeat the candidate.
@@ -22,7 +22,7 @@ cp .env.example .env
 # edit .env and set OPENROUTER_API_KEY
 
 # 3) Run
-uvicorn server:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # 4) Smoke test
 bash examples/curl_smoketest.sh
