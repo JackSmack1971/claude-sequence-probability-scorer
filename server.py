@@ -1,20 +1,10 @@
 import math
-import os
 from typing import List, Literal, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
-
-load_dotenv()
-
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-if not OPENROUTER_API_KEY:
-    raise RuntimeError("Missing OPENROUTER_API_KEY env var")
-
-OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-HTTP_TIMEOUT = 60.0
+from app.core.config import Settings, get_settings
 
 # ---------- Request / Response Schemas ----------
 
@@ -74,13 +64,14 @@ def sum_logprobs_for_response_segment(tokens, token_logprobs, response_start_idx
         return float("-inf"), 0
     return float(sum(filtered)), len(filtered)
 
-async def call_openrouter_completions_echo(model: str, prompt: str, top_logprobs: int):
-    url = f"{OPENROUTER_BASE}/completions"
+async def call_openrouter_completions_echo(model: str, prompt: str, top_logprobs: int, settings: Settings):
+    base_url = settings.openrouter_base.rstrip("/")
+    url = f"{base_url}/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {settings.openrouter_api_key.get_secret_value()}",
         "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("OPENROUTER_APP_URL", ""),
-        "X-Title": os.getenv("OPENROUTER_APP_NAME", "sequence_scorer"),
+        "HTTP-Referer": settings.app_url or "",
+        "X-Title": settings.app_name,
     }
     payload = {
         "model": model,
@@ -90,19 +81,20 @@ async def call_openrouter_completions_echo(model: str, prompt: str, top_logprobs
         "logprobs": max(1, int(top_logprobs)),
         "temperature": 0,
     }
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
         r = await client.post(url, headers=headers, json=payload)
         if r.status_code >= 400:
             raise HTTPException(r.status_code, f"OpenRouter /completions error: {r.text}")
         return r.json()
 
-async def call_openrouter_chat_generate(model: str, messages: List[Msg], top_logprobs: int):
-    url = f"{OPENROUTER_BASE}/chat/completions"
+async def call_openrouter_chat_generate(model: str, messages: List[Msg], top_logprobs: int, settings: Settings):
+    base_url = settings.openrouter_base.rstrip("/")
+    url = f"{base_url}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {settings.openrouter_api_key.get_secret_value()}",
         "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("OPENROUTER_APP_URL", ""),
-        "X-Title": os.getenv("OPENROUTER_APP_NAME", "sequence_scorer"),
+        "HTTP-Referer": settings.app_url or "",
+        "X-Title": settings.app_name,
     }
     chat_messages = [{"role": m.role, "content": m.content} for m in messages]
     payload = {
@@ -113,7 +105,7 @@ async def call_openrouter_chat_generate(model: str, messages: List[Msg], top_log
         "temperature": 0,
         "max_tokens": 1024,
     }
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=settings.http_timeout) as client:
         r = await client.post(url, headers=headers, json=payload)
         if r.status_code >= 400:
             raise HTTPException(r.status_code, f"OpenRouter /chat/completions error: {r.text}")
@@ -128,7 +120,7 @@ async def health():
     return {"status": "ok"}
 
 @app.post("/score", response_model=ScoreResponse)
-async def score(req: ScoreRequest):
+async def score(req: ScoreRequest, settings: Settings = Depends(get_settings)):
     results: List[ScoreResult] = []
 
     for cand in req.candidates:
@@ -141,7 +133,9 @@ async def score(req: ScoreRequest):
                 PromptContext(system=req.prompt_context.system, messages=req.prompt_context.messages),
                 candidate_text=""
             )
-            ctx_echo = await call_openrouter_completions_echo(model, ctx_only_prompt, req.return_top_logprobs)
+            ctx_echo = await call_openrouter_completions_echo(
+                model, ctx_only_prompt, req.return_top_logprobs, settings
+            )
             try:
                 choice = ctx_echo["choices"][0]
                 logprobs_obj = choice.get("logprobs", {})
@@ -152,7 +146,9 @@ async def score(req: ScoreRequest):
 
             # Full echo (context + candidate)
             flat_prompt = build_prompt_from_messages(req.prompt_context, cand.text)
-            full_echo = await call_openrouter_completions_echo(model, flat_prompt, req.return_top_logprobs)
+            full_echo = await call_openrouter_completions_echo(
+                model, flat_prompt, req.return_top_logprobs, settings
+            )
             try:
                 choice_full = full_echo["choices"][0]
                 lp_full = choice_full.get("logprobs", {})
@@ -180,7 +176,9 @@ async def score(req: ScoreRequest):
         else:  # chat_regenerate
             base_msgs = req.prompt_context.messages.copy()
             regen_msgs = base_msgs + [Msg(role="user", content=f"Repeat exactly the following text:\n\n{cand.text}")]
-            raw = await call_openrouter_chat_generate(model, regen_msgs, req.return_top_logprobs)
+            raw = await call_openrouter_chat_generate(
+                model, regen_msgs, req.return_top_logprobs, settings
+            )
             try:
                 ch = raw["choices"][0]
                 generated = ch["message"]["content"]
