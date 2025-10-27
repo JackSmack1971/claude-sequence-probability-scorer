@@ -6,7 +6,8 @@ from app.models.request import ScoreRequest
 from app.models.response import ScoreResponse
 from app.services.scorer import score_candidates
 
-router = APIRouter()
+# All scoring endpoints are versioned to ensure future backwards-compatible changes.
+router = APIRouter(prefix="/v1", tags=["score"])
 
 
 @router.post("/score", response_model=ScoreResponse)

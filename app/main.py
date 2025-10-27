@@ -1,7 +1,7 @@
 """FastAPI application entry point."""
 from fastapi import FastAPI
 
-from app.api.router import api_v1_router
+from app.api.router import api_router
 
 app = FastAPI(title="sequence_scorer (OpenRouter)", version="1.0.0")
 
@@ -14,4 +14,4 @@ async def health() -> dict[str, str]:
 
 
 # Mount versioned API routers.
-app.include_router(api_v1_router)
+app.include_router(api_router)
