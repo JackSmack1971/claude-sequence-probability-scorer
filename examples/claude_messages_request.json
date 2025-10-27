@@ -1,0 +1,109 @@
+{
+  "model": "claude-3-7-sonnet-2025-08",
+  "max_tokens": 800,
+  "tool_choice": "auto",
+  "tools": [
+    {
+      "name": "sequence_scorer",
+      "description": "Scores candidate responses (text) to produce sequence probabilities using OpenRouter. Returns sequence_logprob, probability, avg_logprob.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "prompt_context": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "type": "string"
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "tool",
+                        "system"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "messages"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "model_for_scoring": {
+                  "type": "string"
+                },
+                "tokenizer": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "text",
+                "model_for_scoring"
+              ]
+            },
+            "minItems": 1
+          },
+          "return_top_logprobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "default": 0
+          },
+          "scoring": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "echo_completions",
+                  "chat_regenerate"
+                ],
+                "default": "echo_completions"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "prompt_context",
+          "candidates"
+        ]
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "For the following query, sample five candidate responses, then compute each response's sequence probability and keep only those with P(r) < 0.10. Output <response><text>\u2026</text><probability>\u2026</probability></response> blocks."
+    }
+  ]
+}
